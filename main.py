@@ -9,7 +9,7 @@ import time
 BOT_TOKEN = "9203802169:AAEPHn1B8-bVyaY0jOfP8sXz-ekabmVP8l8"
 
 # आपका Google Apps Script Web App URL
-GAS_URL = "https://script.google.com/macros/s/AKfycbxggQxs77zEJt_7aa4IUfRPA5cQi-aYfEjsq9-FqMDv_cQz_F-mw2XqMP2RNslVQcTnMA/exec"
+GAS_URL = "https://script.google.com/macros/s/AKfycbztwsN4aJUJXzzkuyK7Ra8CtsbbUnHkISwOhfeUrNC2VNhgyd1mzd6eOWaJT8nZNb2IpA/exec"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 

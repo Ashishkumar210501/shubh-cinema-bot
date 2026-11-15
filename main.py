@@ -28,13 +28,13 @@ def send_welcome(message):
         types.KeyboardButton("🔥 Add Recent"),
         types.KeyboardButton("📺 Add Series"),
         types.KeyboardButton("📺 Add TV Show"),
-        types.KeyboardButton("⏳ Add Old is Gold"),
-        types.KeyboardButton("🔞 Add 18+")
+        types.KeyboardButton("⏳ Old Is Gold"),
+        types.KeyboardButton("🔞 Adult")
     )
     bot.reply_to(
         message,
         "👋 **Shubh Cinema Admin Bot में आपका स्वागत है!**\n\n"
-        "🎬 किसी भी मूवी या वीडियो का डायरेक्ट लिंक (URL) या वीडियो फाइल यहाँ भेजें।\n"
+        "🎬 किसी भी मूवी या वीडियो का डायरेक्ट लिंक, Google Drive लिंक, या वीडियो फाइल यहाँ भेजें।\n"
         "बॉट उसे Filemoon पर अपलोड करके **Recent** टैब में जोड़ देगा।",
         reply_markup=markup,
         parse_mode="Markdown"
@@ -74,8 +74,8 @@ def save_to_google_sheet(sheet_name, data_dict):
 # 4. जब एडमिन कोई वीडियो लिंक या फाइल भेजे
 @bot.message_handler(content_types=['text', 'video', 'document'])
 def handle_incoming_content(message):
-    if message.text in ["🎬 Add Movie", "🔥 Add Recent", "📺 Add Series", "📺 Add TV Show", "⏳ Add Old is Gold", "🔞 Add 18+"]:
-        bot.reply_to(message, "📌 कृपया इस टैब में जोड़ने के लिए उस मूवी/वीडियो का **डायरेक्ट लिंक (URL) या वीडियो फाइल** भेजें:")
+    if message.text in ["🎬 Add Movie", "🔥 Add Recent", "📺 Add Series", "📺 Add TV Show", "⏳ Old Is Gold", "🔞 Adult"]:
+        bot.reply_to(message, "📌 कृपया इस टैब में जोड़ने के लिए उस मूवी/वीडियो का **लिंक या फाइल** भेजें:")
         return
 
     video_link = None
@@ -94,13 +94,22 @@ def handle_incoming_content(message):
         bot.reply_to(message, "⚠️ कृपया कोई वैध वीडियो लिंक (URL) या वीडियो फाइल भेजें।")
         return
 
+    # 🟢 Google Drive लिंक को ऑटोमैटिक डायरेक्ट डाउनलोड लिंक में बदलना
+    if "drive.google.com" in video_link:
+        try:
+            if "/file/d/" in video_link:
+                file_id = video_link.split("/file/d/")[1].split("/")[0]
+                video_link = f"https://drive.google.com/uc?export=download&id={file_id}"
+        except Exception as e:
+            print(f"Drive Link Conversion Error: {e}")
+
     msg = bot.reply_to(message, "⏳ वीडियो Filemoon पर अपलोड हो रहा है, कृपया प्रतीक्षा करें...")
     
     # Filemoon Upload
     stream_url, download_url = upload_to_filemoon(video_link)
     
     if not stream_url:
-        bot.edit_message_text("❌ Filemoon अपलोड विफल रहा! कृपया दूसरा डायरेक्ट लिंक चेक करें।", message.chat.id, msg.message_id)
+        bot.edit_message_text("❌ Filemoon अपलोड विफल रहा!\nसुनिश्चित करें कि गूगल ड्राइव फाइल **'Anyone with the link' (Public)** हो।", message.chat.id, msg.message_id, parse_mode="Markdown")
         return
 
     # डेटा स्ट्रक्चर
@@ -190,4 +199,4 @@ ping_thread = threading.Thread(target=background_link_pinger, daemon=True)
 ping_thread.start()
 
 print("Bot is running...")
-bot.infinity_polling()
+bot.infinity_polling()  # यहाँ स्पेस ठीक कर दिया गया है

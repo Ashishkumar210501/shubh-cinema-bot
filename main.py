@@ -8,7 +8,7 @@ import time
 # आपका Telegram Bot Token यहाँ सेट है
 BOT_TOKEN = "9203802169:AAEPHn1B8-bVyaY0jOfP8sXz-ekabmVP8l8"
 
-# आपका Google Apps Script Web App URL
+# आपका नया Google Apps Script Web App URL
 GAS_URL = "https://script.google.com/macros/s/AKfycbztwsN4aJUJXzzkuyK7Ra8CtsbbUnHkISwOhfeUrNC2VNhgyd1mzd6eOWaJT8nZNb2IpA/exec"
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -16,7 +16,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 # अस्थाई रूप से यूजर का डेटा स्टोर करने के लिए डिक्शनरी
 user_pending_data = {}
 
-# 1. /start कमांड और रिप्लाई कीबोर्ड बटन्स
+# 1. /start कमांड और कीबोर्ड बटन्स
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -31,8 +31,8 @@ def send_welcome(message):
     bot.reply_to(
         message,
         "👋 **Shubh Cinema Admin Bot में आपका स्वागत है!**\n\n"
-        "🎬 अपने प्राइवेट चैनल से वीडियो को सीधे इस बॉट पर **Forward** करें या उसका लिंक भेजें।\n"
-        "बॉट उसे सीधे **Recent** टैब में जोड़ देगा।",
+        "🎬 अपने प्राइवेट चैनल से वीडियो को सीधे इस बॉट पर **Forward** करें।\n"
+        "बॉट उसका असली नाम डिटेक्ट करके सही डिटेल्स के साथ Google Sheet में जोड़ देगा।",
         reply_markup=markup,
         parse_mode="Markdown"
     )
@@ -40,7 +40,6 @@ def send_welcome(message):
 # 2. Google Sheet में डेटा भेजने का फंक्शन
 def save_to_google_sheet(sheet_name, data_dict):
     payload = {
-        "action": "addData",
         "sheetName": sheet_name,
         "data": data_dict
     }
@@ -59,57 +58,58 @@ def handle_incoming_content(message):
         return
 
     video_link = None
+    detected_title = "Uploaded Video"
     
     # अगर यूजर ने प्राइवेट चैनल से वीडियो सीधे बॉट को Forward किया है
     if message.video or message.document or message.audio:
         file_obj = message.video or message.document or message.audio
         file_id = file_obj.file_id
+        
+        # फाइल का असली नाम (FileName) निकालने की कोशिश
+        if hasattr(file_obj, 'file_name') and file_obj.file_name:
+            detected_title = file_obj.file_name.rsplit('.', 1)[0].replace('_', ' ').replace('.', ' ')
+        elif message.caption:
+            detected_title = message.caption.split('\n')[0]
+            
         file_info = bot.get_file(file_id)
-        # यह टेलीग्राम का डायरेक्ट परमानेंट लिंक बन जाता है
         video_link = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
     
     # अगर यूजर ने टेक्स्ट लिंक भेजा है
     elif message.text and message.text.startswith('http'):
         video_link = message.text.strip()
-        
-        # Google Drive लिंक कन्वर्जन (अगर कभी ड्राइव का देना हो)
-        if "drive.google.com" in video_link:
-            try:
-                if "/file/d/" in video_link:
-                    file_id = video_link.split("/file/d/")[1].split("/")[0]
-                    video_link = f"https://drive.google.com/uc?export=download&id={file_id}"
-            except Exception as e:
-                print(f"Drive Link Conversion Error: {e}")
+        detected_title = video_link.split('/')[-1].split('?')[0].replace('_', ' ').replace('-', ' ')
+        if not detected_title or len(detected_title) < 3:
+            detected_title = "Web Uploaded Movie"
 
     if not video_link:
         bot.reply_to(message, "⚠️ कृपया अपने प्राइवेट चैनल से वीडियो सीधे इस बॉट पर **Forward** करें।")
         return
 
-    # डेटा स्ट्रक्चर (टेलीग्राम लिंक के साथ)
+    # सही और साफ़-सुथरा डेटा स्ट्रक्चर (फर्जी वैल्यूज हटाई गईं)
     movie_data = {
         "ID": "M" + str(abs(hash(video_link)) % (999 - 100 + 1) + 100),
-        "Title": "New Telegram Video",
+        "Title": detected_title.title(), # आटोमेटिक सही नाम कैपिटल फॉर्मेट में
         "Thumbnail_URL": "https://img.com/default_thumb.jpg",
         "Banner_URL": "https://img.com/default_banner.jpg",
-        "Stream_URL": video_link,   # यहाँ टेलीग्राम का डायरेक्ट लिंक सेव होगा
-        "Download_URL": video_link, # यहाँ भी डाउनलोड के लिए टेलीग्राम लिंक रहेगा
-        "Category": "Action / Drama",
-        "Industry": "Bollywood",
+        "Stream_URL": video_link,
+        "Download_URL": video_link,
+        "Category": "Full Movie / Series",
+        "Industry": "Bollywood / Hollywood",
         "Language": "Hindi",
         "Quality": "1080p",
-        "Show_in_Banner": "True",
+        "Show_in_Banner": "TRUE",
         "Views": "0",
         "Duration_or_Year": "2026",
-        "Description": "प्राइवेट टेलीग्राम चैनल से अपलोड की गई मूवी।"
+        "Description": "शब् सिनेमा बॉट द्वारा जोड़ी गई फाइल।"
     }
 
     # सबसे पहले Recent टैब में सेव करें
     save_to_google_sheet("Recent", movie_data)
     
-    # डेटा को अस्थायी रूप से सेव रखना
+    # डेटा को अस्थायी रूप से सेव रखना ताकि बटन दबाने पर दूसरे टैब में जा सके
     user_pending_data[message.chat.id] = movie_data
 
-    # Telegram Inline Buttons (दूसरा टैब चुनने के लिए)
+    # Telegram Inline Buttons (दूसरा टैब चुनने के लिए - Recent और Series दोनों उपलब्ध)
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("🎬 Movies", callback_data="tab_Movies"),
@@ -122,14 +122,14 @@ def handle_incoming_content(message):
 
     bot.reply_to(
         message,
-        f"✅ वीडियो का लिंक सफलतापर्वक तैयार कर लिया गया!\n"
-        f"📌 इसे सबसे पहले **Recent** टैब में जोड़ दिया गया है।\n\n"
-        f"अब बताएं, इसे और किस टैब में जोड़ना चाहते हैं?",
+        f"✅ फाइल का नाम: **{detected_title.title()}**\n"
+        f"📌 इसे **Recent** टैब में जोड़ दिया गया है।\n\n"
+        f"अब बताएं, क्या आप इसे **Series** या किसी अन्य टैब में भी भेजना चाहते हैं?",
         reply_markup=markup,
         parse_mode="Markdown"
     )
 
-# 4. बटन क्लिक होने पर दूसरे टैब में डेटा सेव करना
+# 4. बटन क्लिक होने पर दूसरे टैब (जैसे Series) में डेटा सेव करना
 @bot.callback_query_handler(func=lambda call: call.data.startswith('tab_'))
 def handle_tab_selection(call):
     selected_tab = call.data.split("_")[1]
@@ -137,13 +137,14 @@ def handle_tab_selection(call):
     
     if selected_tab == "Done":
         bot.answer_callback_query(call.id, "प्रोसेस समाप्त!")
-        bot.edit_message_text("👍 डेटा केवल Recent टैब में सुरक्षित कर दिया गया है।", chat_id, call.message.message_id)
+        bot.edit_message_text("👍 डेटा केवल Recent टैब में सुरक्षित है।", chat_id, call.message.message_id)
         if chat_id in user_pending_data:
             del user_pending_data[chat_id]
         return
 
     if chat_id in user_pending_data:
         movie_data = user_pending_data[chat_id]
+        # जिस टैब पर क्लिक किया जाएगा (जैसे Series), डेटा उस टैब में चला जाएगा
         save_to_google_sheet(selected_tab, movie_data)
         bot.answer_callback_query(call.id, f"{selected_tab} टैब में जोड़ दिया गया!")
         bot.edit_message_text(f"✅ डेटा सफलतापूर्वक **{selected_tab}** टैब में भी जोड़ा जा चुका है!", chat_id, call.message.message_id, parse_mode="Markdown")

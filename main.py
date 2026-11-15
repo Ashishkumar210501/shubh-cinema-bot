@@ -11,9 +11,6 @@ BOT_TOKEN = "9203802169:AAEPHn1B8-bVyaY0jOfP8sXz-ekabmVP8l8"
 # आपका Google Apps Script Web App URL
 GAS_URL = "https://script.google.com/macros/s/AKfycbxggQxs77zEJt_7aa4IUfRPA5cQi-aYfEjsq9-FqMDv_cQz_F-mw2XqMP2RNslVQcTnMA/exec"
 
-# आपकी Filemoon API Key
-FILEMOON_API_KEY = "1666910y1zglkkt8t55493"
-
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # अस्थाई रूप से यूजर का डेटा स्टोर करने के लिए डिक्शनरी
@@ -34,30 +31,13 @@ def send_welcome(message):
     bot.reply_to(
         message,
         "👋 **Shubh Cinema Admin Bot में आपका स्वागत है!**\n\n"
-        "🎬 किसी भी मूवी या वीडियो का डायरेक्ट लिंक, Google Drive लिंक, या वीडियो फाइल यहाँ भेजें।\n"
-        "बॉट उसे Filemoon पर अपलोड करके **Recent** टैब में जोड़ देगा।",
+        "🎬 अपने प्राइवेट चैनल से वीडियो को सीधे इस बॉट पर **Forward** करें या उसका लिंक भेजें।\n"
+        "बॉट उसे सीधे **Recent** टैब में जोड़ देगा।",
         reply_markup=markup,
         parse_mode="Markdown"
     )
 
-# 2. Filemoon पर वीडियो रिमोट अपलोड करने का फंक्शन
-def upload_to_filemoon(video_url):
-    api_url = f"https://filemoonapi.com/api/upload/url?key={FILEMOON_API_KEY}&url={video_url}"
-    try:
-        response = requests.get(api_url, timeout=30)
-        data = response.json()
-        if data.get("status") == 200:
-            file_code = data["result"]["file_code"]
-            stream_url = f"https://filemoon.sx/e/{file_code}"
-            download_url = f"https://filemoon.sx/d/{file_code}"
-            return stream_url, download_url
-        else:
-            print(f"Filemoon API Response Error: {data}")
-    except Exception as e:
-        print(f"Filemoon Connection Error: {e}")
-    return None, None
-
-# 3. Google Sheet (Google Apps Script) में डेटा भेजने का फंक्शन
+# 2. Google Sheet में डेटा भेजने का फंक्शन
 def save_to_google_sheet(sheet_name, data_dict):
     payload = {
         "action": "addData",
@@ -71,55 +51,48 @@ def save_to_google_sheet(sheet_name, data_dict):
         print(f"Sheet Error: {e}")
         return {"status": "error"}
 
-# 4. जब एडमिन कोई वीडियो लिंक या फाइल भेजे
-@bot.message_handler(content_types=['text', 'video', 'document'])
+# 3. जब एडमिन वीडियो फॉरवर्ड करे या लिंक भेजे
+@bot.message_handler(content_types=['text', 'video', 'document', 'audio'])
 def handle_incoming_content(message):
     if message.text in ["🎬 Add Movie", "🔥 Add Recent", "📺 Add Series", "📺 Add TV Show", "⏳ Old Is Gold", "🔞 Adult"]:
-        bot.reply_to(message, "📌 कृपया इस टैब में जोड़ने के लिए उस मूवी/वीडियो का **लिंक या फाइल** भेजें:")
+        bot.reply_to(message, "📌 कृपया इस टैब में जोड़ने के लिए अपने प्राइवेट चैनल से वीडियो **यहाँ Forward करें**:")
         return
 
     video_link = None
     
-    # टेक्स्ट लिंक चेक करें
-    if message.text and message.text.startswith('http'):
-        video_link = message.text.strip()
-    
-    # डायरेक्ट वीडियो या डॉक्यूमेंट चेक करें
-    elif message.video or message.document:
-        file_id = message.video.file_id if message.video else message.document.file_id
+    # अगर यूजर ने प्राइवेट चैनल से वीडियो सीधे बॉट को Forward किया है
+    if message.video or message.document or message.audio:
+        file_obj = message.video or message.document or message.audio
+        file_id = file_obj.file_id
         file_info = bot.get_file(file_id)
+        # यह टेलीग्राम का डायरेक्ट परमानेंट लिंक बन जाता है
         video_link = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
     
+    # अगर यूजर ने टेक्स्ट लिंक भेजा है
+    elif message.text and message.text.startswith('http'):
+        video_link = message.text.strip()
+        
+        # Google Drive लिंक कन्वर्जन (अगर कभी ड्राइव का देना हो)
+        if "drive.google.com" in video_link:
+            try:
+                if "/file/d/" in video_link:
+                    file_id = video_link.split("/file/d/")[1].split("/")[0]
+                    video_link = f"https://drive.google.com/uc?export=download&id={file_id}"
+            except Exception as e:
+                print(f"Drive Link Conversion Error: {e}")
+
     if not video_link:
-        bot.reply_to(message, "⚠️ कृपया कोई वैध वीडियो लिंक (URL) या वीडियो फाइल भेजें।")
+        bot.reply_to(message, "⚠️ कृपया अपने प्राइवेट चैनल से वीडियो सीधे इस बॉट पर **Forward** करें।")
         return
 
-    # 🟢 Google Drive लिंक को ऑटोमैटिक डायरेक्ट डाउनलोड लिंक में बदलना
-    if "drive.google.com" in video_link:
-        try:
-            if "/file/d/" in video_link:
-                file_id = video_link.split("/file/d/")[1].split("/")[0]
-                video_link = f"https://drive.google.com/uc?export=download&id={file_id}"
-        except Exception as e:
-            print(f"Drive Link Conversion Error: {e}")
-
-    msg = bot.reply_to(message, "⏳ वीडियो Filemoon पर अपलोड हो रहा है, कृपया प्रतीक्षा करें...")
-    
-    # Filemoon Upload
-    stream_url, download_url = upload_to_filemoon(video_link)
-    
-    if not stream_url:
-        bot.edit_message_text("❌ Filemoon अपलोड विफल रहा!\nसुनिश्चित करें कि गूगल ड्राइव फाइल **'Anyone with the link' (Public)** हो।", message.chat.id, msg.message_id, parse_mode="Markdown")
-        return
-
-    # डेटा स्ट्रक्चर
+    # डेटा स्ट्रक्चर (टेलीग्राम लिंक के साथ)
     movie_data = {
         "ID": "M" + str(abs(hash(video_link)) % (999 - 100 + 1) + 100),
-        "Title": "New Uploaded Video",
+        "Title": "New Telegram Video",
         "Thumbnail_URL": "https://img.com/default_thumb.jpg",
         "Banner_URL": "https://img.com/default_banner.jpg",
-        "Stream_URL": stream_url,
-        "Download_URL": download_url,
+        "Stream_URL": video_link,   # यहाँ टेलीग्राम का डायरेक्ट लिंक सेव होगा
+        "Download_URL": video_link, # यहाँ भी डाउनलोड के लिए टेलीग्राम लिंक रहेगा
         "Category": "Action / Drama",
         "Industry": "Bollywood",
         "Language": "Hindi",
@@ -127,7 +100,7 @@ def handle_incoming_content(message):
         "Show_in_Banner": "True",
         "Views": "0",
         "Duration_or_Year": "2026",
-        "Description": "बॉट द्वारा ऑटो-अपलोड की गई मूवी।"
+        "Description": "प्राइवेट टेलीग्राम चैनल से अपलोड की गई मूवी।"
     }
 
     # सबसे पहले Recent टैब में सेव करें
@@ -147,17 +120,16 @@ def handle_incoming_content(message):
         types.InlineKeyboardButton("❌ बस Recent में रहने दें", callback_data="tab_Done")
     )
 
-    bot.edit_message_text(
-        f"✅ वीडियो सफलतापूर्वक Filemoon पर अपलोड हो गया!\n"
-        f"📌 इसे सबसे पहले **Recent** टैब में जोड़ दिया गया है।\n\n"
-        f"अब बताएं, इसे और किस टैब में जोड़ना चाहते हैं?",
-        message.chat.id,
-        msg.message_id,
+    bot.reply_to(
+        message,
+        f"✅ वीडियो का लिंक सफलतापर्वक तैयार कर लिया गया!\n"
+        f"📌 इसे सबसे पहले **Recent** टैब में जोड़ दिया गया है।\n\n"
+        f"अब बताएं, इसे और किस टैब में जोड़ना चाहते हैं?",
         reply_markup=markup,
         parse_mode="Markdown"
     )
 
-# 5. बटन क्लिक होने पर दूसरे टैब में डेटा सेव करना
+# 4. बटन क्लिक होने पर दूसरे टैब में डेटा सेव करना
 @bot.callback_query_handler(func=lambda call: call.data.startswith('tab_'))
 def handle_tab_selection(call):
     selected_tab = call.data.split("_")[1]
@@ -173,30 +145,12 @@ def handle_tab_selection(call):
     if chat_id in user_pending_data:
         movie_data = user_pending_data[chat_id]
         save_to_google_sheet(selected_tab, movie_data)
-        bot.answer_callback_query(call.id, f"{selected_tab} टैब में जोड़ दिया गया!")
-        bot.edit_message_text(f"✅ डेटा सफलतापूर्वक **{selected_tab}** टैब में भी जोड़ा जा चुका है!", chat_id, call.message.message_id, parse_mode="Markdown")
+        bot.answer_callback_query(call.id, f"{selected_tab} टैब में जोड़ दिया गया!")
+        bot.edit_message_text(f"✅ डेटा सफलतापूर्वक **{selected_tab}** टैब में भी जोड़ा जा चुका है!", chat_id, call.message.message_id, parse_mode="Markdown")
         del user_pending_data[chat_id]
     else:
-        bot.answer_callback_query(call.id, "सत्र समाप्त हो गया, कृपया दोबारा लिंक भेजें।")
-        bot.edit_message_text("⚠️ सेशन एक्सपायर हो गया है। कृपया नई वीडियो लिंक भेजें।", chat_id, call.message.message_id)
-
-# 6. Filemoon फाइलों को एक्टिव रखने का बैकग्राउंड फंक्शन (Pinger)
-def background_link_pinger():
-    while True:
-        try:
-            time.sleep(2592000) # हर 30 दिन में
-            if GAS_URL:
-                response = requests.get(GAS_URL + "?action=getAllLinks")
-                data = response.json()
-                for url in data.get("stream_urls", []):
-                    if "filemoon" in url:
-                        requests.get(url, timeout=10)
-        except Exception as e:
-            print(f"Background pinger error: {e}")
-
-# बैकग्राउंड थ्रेड शुरू करना
-ping_thread = threading.Thread(target=background_link_pinger, daemon=True)
-ping_thread.start()
+        bot.answer_callback_query(call.id, "सत्र समाप्त हो गया, कृपया दोबारा वीडियो भेजें।")
+        bot.edit_message_text("⚠️ सेशन एक्सपायर हो गया है। कृपया नया वीडियो भेजें।", chat_id, call.message.message_id)
 
 print("Bot is running...")
-bot.infinity_polling()  # यहाँ स्पेस ठीक कर दिया गया है
+bot.infinity_polling()
